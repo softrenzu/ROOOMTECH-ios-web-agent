@@ -9,6 +9,10 @@ struct PageSnapshot: Codable {
         let placeholder: String?
         let type: String?
         let href: String?
+        let formAction: String?
+        let formMethod: String?
+        let disabled: Bool
+        let sensitive: Bool
         let x: Double
         let y: Double
         let width: Double
