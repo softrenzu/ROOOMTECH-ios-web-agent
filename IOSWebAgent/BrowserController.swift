@@ -34,7 +34,7 @@ final class BrowserController: ObservableObject {
     }
 
     func snapshot() async throws -> PageSnapshot {
-        guard let webView else { throw AgentError.noWebView }
+        guard webView != nil else { throw AgentError.noWebView }
         let script = #"""
         (() => {
           const isVisible = (el) => {
@@ -44,6 +44,23 @@ final class BrowserController: ObservableObject {
           };
           const clean = (v, n = 180) => (v || '').replace(/\s+/g, ' ').trim().slice(0, n);
           const selector = 'a,button,input,textarea,select,[role="button"],[onclick],[contenteditable="true"]';
+          const sensitivePattern = /(pass(word)?|passwd|pin|otp|one.?time|verification|security.?code|cvv|cvc|card.?number)/i;
+          const isSensitive = (el) => {
+            const tag = el.tagName.toLowerCase();
+            const type = (el.getAttribute('type') || '').toLowerCase();
+            const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+            const hints = [
+              el.getAttribute('name'),
+              el.id,
+              el.getAttribute('aria-label'),
+              el.getAttribute('placeholder')
+            ].filter(Boolean).join(' ');
+            return tag === 'input' && (
+              ['password', 'hidden', 'file'].includes(type) ||
+              ['current-password', 'new-password', 'one-time-code'].includes(autocomplete) ||
+              sensitivePattern.test(hints)
+            );
+          };
           window.__iosAgentCounter = window.__iosAgentCounter || 1;
           const elements = [];
           for (const el of document.querySelectorAll(selector)) {
@@ -54,14 +71,20 @@ final class BrowserController: ObservableObject {
               el.setAttribute('data-ios-agent-id', id);
             }
             const r = el.getBoundingClientRect();
+            const sensitive = isSensitive(el);
+            const form = el.closest('form');
             elements.push({
               id,
               tag: el.tagName.toLowerCase(),
-              text: clean(el.innerText || el.textContent || el.value || ''),
+              text: sensitive ? '' : clean(el.innerText || el.textContent || el.value || ''),
               ariaLabel: clean(el.getAttribute('aria-label') || '') || null,
               placeholder: clean(el.getAttribute('placeholder') || '') || null,
               type: clean(el.getAttribute('type') || '') || null,
               href: clean(el.href || '') || null,
+              formAction: form ? clean(form.action || '') || null : null,
+              formMethod: form ? clean(form.method || '') || null : null,
+              disabled: Boolean(el.disabled || el.getAttribute('aria-disabled') === 'true'),
+              sensitive,
               x: Math.round(r.x),
               y: Math.round(r.y),
               width: Math.round(r.width),
@@ -96,13 +119,14 @@ final class BrowserController: ObservableObject {
             (() => {
               const el = document.querySelector('[data-ios-agent-id=' + \(jsString(target)) + ']');
               if (!el) return 'not_found';
+              if (el.disabled || el.getAttribute('aria-disabled') === 'true') return 'disabled';
               el.scrollIntoView({block:'center', inline:'center'});
               el.focus();
               el.click();
               return 'ok';
             })();
             """
-            _ = try await evaluate(js)
+            try await requireOK(js, actionName: "タップ")
 
         case "input":
             guard let target = action.target else { throw AgentError.actionFailed("targetがありません") }
@@ -111,6 +135,7 @@ final class BrowserController: ObservableObject {
             (() => {
               const el = document.querySelector('[data-ios-agent-id=' + \(jsString(target)) + ']');
               if (!el) return 'not_found';
+              if (el.disabled || el.getAttribute('aria-disabled') === 'true') return 'disabled';
               el.scrollIntoView({block:'center', inline:'center'});
               el.focus();
               const value = \(jsString(text));
@@ -126,7 +151,7 @@ final class BrowserController: ObservableObject {
               return 'ok';
             })();
             """
-            _ = try await evaluate(js)
+            try await requireOK(js, actionName: "入力")
 
         case "scroll":
             let delta = action.delta ?? 650
@@ -140,13 +165,27 @@ final class BrowserController: ObservableObject {
             goBack()
 
         case "wait":
-            try await Task.sleep(nanoseconds: 1_200_000_000)
+            try await Task.sleep(for: .seconds(1.2))
 
         case "done", "confirm":
             break
 
         default:
             throw AgentError.actionFailed("未対応アクション: \(action.type)")
+        }
+    }
+
+    private func requireOK(_ script: String, actionName: String) async throws {
+        let result = try await evaluate(script) as? String
+        switch result {
+        case "ok":
+            return
+        case "not_found":
+            throw AgentError.actionFailed("\(actionName)対象がページ上に見つかりません")
+        case "disabled":
+            throw AgentError.actionFailed("\(actionName)対象は無効化されています")
+        default:
+            throw AgentError.actionFailed("\(actionName)結果を確認できません")
         }
     }
 
