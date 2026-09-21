@@ -27,12 +27,20 @@ struct PageSnapshot: Codable {
     let elements: [Element]
 }
 
+struct BrowserScreenshot {
+    let base64JPEG: String
+    let width: Double
+    let height: Double
+}
+
 struct AgentAction: Codable {
     let type: String
     let target: String?
     let text: String?
     let url: String?
     let delta: Double?
+    let x: Double?
+    let y: Double?
     let message: String?
 }
 
