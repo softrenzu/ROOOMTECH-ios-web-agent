@@ -89,11 +89,22 @@ final class AgentController: ObservableObject {
                     contextHistory.append("USER APPROVED: \(approvedConfirmation)")
                 }
 
+                let usableElements = snapshot.elements.filter { !$0.disabled }
+                let shouldUseVision = usableElements.count < 3 || snapshot.bodyText.count < 80
+                let screenshot: BrowserScreenshot?
+                if shouldUseVision && !snapshot.elements.contains(where: { $0.sensitive }) {
+                    status = "画面画像を確認中"
+                    screenshot = await browser.captureScreenshot()
+                } else {
+                    screenshot = nil
+                }
+
                 status = "次の操作を判断中"
                 let action = try await client.nextAction(
                     apiKey: apiKey,
                     goal: goal,
                     snapshot: snapshot,
+                    screenshot: screenshot,
                     history: contextHistory
                 )
                 lastAction = describe(action)
@@ -150,7 +161,7 @@ final class AgentController: ObservableObject {
                 }
                 history.append(describe(action))
 
-                if action.type == "navigate" || action.type == "tap" {
+                if action.type == "navigate" || action.type == "tap" || action.type == "tap_point" {
                     try await browser.waitForPageSettled()
                 } else {
                     try await Task.sleep(for: .milliseconds(350))
@@ -173,6 +184,10 @@ final class AgentController: ObservableObject {
     }
 
     private func localSafetyMessage(for action: AgentAction, snapshot: PageSnapshot) -> String? {
+        if action.type == "tap_point" {
+            return "画面画像を基に座標をタップしようとしています。DOMから操作対象の意味を確認できないため、このクリックを実行しますか？"
+        }
+
         guard action.type == "tap", let target = action.target,
               let element = snapshot.elements.first(where: { $0.id == target }) else {
             return nil
@@ -202,6 +217,7 @@ final class AgentController: ObservableObject {
     private func describe(_ action: AgentAction) -> String {
         switch action.type {
         case "tap": return "tap \(action.target ?? "")"
+        case "tap_point": return "tap_point \(Int(action.x ?? 0)),\(Int(action.y ?? 0))"
         case "input": return "input \(action.target ?? "")"
         case "scroll": return "scroll \(Int(action.delta ?? 650))"
         case "navigate": return "navigate \(action.url ?? "")"
