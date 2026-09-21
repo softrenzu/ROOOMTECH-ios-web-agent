@@ -75,17 +75,23 @@ struct ContentView: View {
             .padding(.top, 8)
 
             HStack(spacing: 8) {
-                Button("TRANBIログイン") {
-                    browser.load("https://www.tranbi.com/login/")
-                    tranbiStatus = "ログインしてください"
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button("オファー一覧") {
-                    browser.load("https://www.tranbi.com/sell/list/")
-                    tranbiStatus = "確認中"
-                    Task { await refreshTranbiStatus() }
+                Menu {
+                    Button("ログイン画面") {
+                        browser.load("https://www.tranbi.com/login/")
+                        tranbiStatus = "ログインしてください"
+                    }
+                    Button("売却交渉オファー一覧") {
+                        browser.load("https://www.tranbi.com/sell/list/")
+                        tranbiStatus = "確認中"
+                        Task { await refreshTranbiStatus() }
+                    }
+                    Button("公式自動オファー設定") {
+                        browser.load("https://www.tranbi.com/mypage/sell/case/")
+                        tranbiStatus = "確認中"
+                        Task { await refreshTranbiStatus() }
+                    }
+                } label: {
+                    Label("TRANBI", systemImage: "briefcase")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -104,12 +110,12 @@ struct ContentView: View {
                 .controlSize(.small)
                 .accessibilityLabel("TRANBIログイン状態を確認")
 
-                Spacer()
-
                 Text(tranbiStatus)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                Spacer()
             }
             .padding(.horizontal, 10)
 
@@ -218,6 +224,12 @@ private struct SettingsView: View {
                 Section("TRANBIログイン") {
                     Text("TRANBIログイン画面のメールアドレスまたはパスワード欄をタップし、iPhoneのパスワード自動入力からChromeに保存したTRANBIの認証情報を選択してください。")
                     Text("ログイン時は「ログイン状態を30日間保持する」を有効にすると、アプリ内ブラウザのセッションを維持しやすくなります。")
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("TRANBIオファー") {
+                    Text("TRANBI公式の自動オファー機能は、上部のTRANBIメニューから「公式自動オファー設定」を開いて設定できます。")
+                    Text("外部ソフトによる自動投稿はTRANBIのルール上制限されているため、本アプリは候補検索・分析を支援し、公式自動オファー機能を優先します。")
                         .foregroundStyle(.secondary)
                 }
 
