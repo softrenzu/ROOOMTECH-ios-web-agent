@@ -19,7 +19,7 @@ final class BrowserController: ObservableObject {
         if !value.contains("://") {
             value = "https://" + value
         }
-        guard let url = URL(string: value) else { return }
+        guard let url = URL(string: value), isAllowedWebURL(url) else { return }
         currentURL = url.absoluteString
         webView?.load(URLRequest(url: url))
     }
@@ -219,8 +219,13 @@ final class BrowserController: ObservableObject {
             _ = try await evaluate("window.scrollBy({top: \(delta), behavior: 'smooth'}); 'ok';")
 
         case "navigate":
-            guard let url = action.url else { throw AgentError.actionFailed("URLがありません") }
-            load(url)
+            guard let rawURL = action.url,
+                  let destination = URL(string: rawURL),
+                  isAllowedWebURL(destination) else {
+                throw AgentError.actionFailed("http/https以外のURLには移動できません")
+            }
+            currentURL = destination.absoluteString
+            webView?.load(URLRequest(url: destination))
 
         case "back":
             goBack()
@@ -261,6 +266,15 @@ final class BrowserController: ObservableObject {
                 }
             }
         }
+    }
+
+    private func isAllowedWebURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil else {
+            return false
+        }
+        return true
     }
 
     private func jsString(_ value: String) -> String {
