@@ -34,44 +34,6 @@ final class BrowserController: ObservableObject {
         webView?.reload()
     }
 
-    func tranbiSessionStatus() async -> String {
-        guard let webView,
-              let host = webView.url?.host?.lowercased(),
-              host == "tranbi.com" || host.hasSuffix(".tranbi.com") else {
-            return "TRANBI未表示"
-        }
-
-        if webView.isLoading {
-            try? await waitForPageSettled()
-        }
-
-        let script = #"""
-        (() => {
-          const text = (document.body?.innerText || '').replace(/\s+/g, ' ');
-          const path = location.pathname || '';
-          const hasPassword = !!document.querySelector('input[type="password"]');
-          const hasLoginButton = Array.from(document.querySelectorAll('button,input[type="submit"],a'))
-            .some(el => /ログイン/.test((el.innerText || el.value || el.textContent || '').trim()));
-          const hasMyPage = /マイページ/.test(text);
-          const hasLogout = /ログアウト/.test(text) || !!document.querySelector('a[href*="logout"],form[action*="logout"]');
-          const onLoginPage = path.startsWith('/login');
-          if ((hasMyPage || hasLogout) && !hasPassword && !onLoginPage) return 'logged_in';
-          if (onLoginPage || (hasPassword && hasLoginButton)) return 'login_required';
-          return 'unknown';
-        })();
-        """#
-
-        guard let result = try? await evaluate(script) as? String else {
-            return "確認失敗"
-        }
-
-        switch result {
-        case "logged_in": return "ログイン済み"
-        case "login_required": return "ログイン必要"
-        default: return "状態不明"
-        }
-    }
-
     func waitForPageSettled() async throws {
         guard webView != nil else { throw AgentError.noWebView }
         try await Task.sleep(for: .milliseconds(180))
