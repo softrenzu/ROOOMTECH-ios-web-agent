@@ -7,8 +7,6 @@ struct ContentView: View {
     @State private var address = "https://www.google.com"
     @State private var goal = ""
     @State private var showSettings = false
-    @State private var tranbiStatus = "未確認"
-    @State private var checkingTranbiStatus = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,6 +63,13 @@ struct ContentView: View {
                 .buttonStyle(.borderless)
 
                 Button {
+                    browser.reload()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+
+                Button {
                     showSettings = true
                 } label: {
                     Image(systemName: "gearshape")
@@ -74,51 +79,6 @@ struct ContentView: View {
             .padding(.horizontal, 10)
             .padding(.top, 8)
 
-            HStack(spacing: 8) {
-                Menu {
-                    Button("ログイン画面") {
-                        browser.load("https://www.tranbi.com/login/")
-                        tranbiStatus = "ログインしてください"
-                    }
-                    Button("売却交渉オファー一覧") {
-                        browser.load("https://www.tranbi.com/sell/list/")
-                        tranbiStatus = "確認中"
-                        Task { await refreshTranbiStatus() }
-                    }
-                    Button("公式自動オファー設定") {
-                        browser.load("https://www.tranbi.com/mypage/sell/case/")
-                        tranbiStatus = "確認中"
-                        Task { await refreshTranbiStatus() }
-                    }
-                } label: {
-                    Label("TRANBI", systemImage: "briefcase")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button {
-                    Task { await refreshTranbiStatus() }
-                } label: {
-                    if checkingTranbiStatus {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "checkmark.shield")
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .accessibilityLabel("TRANBIログイン状態を確認")
-
-                Text(tranbiStatus)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-
             if browser.isLoading {
                 ProgressView()
                     .progressViewStyle(.linear)
@@ -126,16 +86,13 @@ struct ContentView: View {
         }
         .onChange(of: browser.currentURL) { _, newValue in
             address = newValue
-            if newValue.contains("tranbi.com") {
-                Task { await refreshTranbiStatus() }
-            }
         }
     }
 
     private var agentPanel: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                TextField("例: 条件に合う候補を確認して。送信はしないで", text: $goal, axis: .vertical)
+                TextField("このページで何をするか入力", text: $goal, axis: .vertical)
                     .lineLimit(1...3)
                     .textFieldStyle(.roundedBorder)
 
@@ -168,14 +125,6 @@ struct ContentView: View {
         }
         .padding(10)
         .background(.ultraThinMaterial)
-    }
-
-    @MainActor
-    private func refreshTranbiStatus() async {
-        guard !checkingTranbiStatus else { return }
-        checkingTranbiStatus = true
-        defer { checkingTranbiStatus = false }
-        tranbiStatus = await browser.tranbiSessionStatus()
     }
 }
 
@@ -221,20 +170,12 @@ private struct SettingsView: View {
                     }
                 }
 
-                Section("TRANBIログイン") {
-                    Text("TRANBIログイン画面のメールアドレスまたはパスワード欄をタップし、iPhoneのパスワード自動入力からChromeに保存したTRANBIの認証情報を選択してください。")
-                    Text("ログイン時は「ログイン状態を30日間保持する」を有効にすると、アプリ内ブラウザのセッションを維持しやすくなります。")
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("TRANBIオファー") {
-                    Text("TRANBI公式の自動オファー機能は、上部のTRANBIメニューから「公式自動オファー設定」を開いて設定できます。")
-                    Text("外部ソフトによる自動投稿はTRANBIのルール上制限されているため、本アプリは候補検索・分析を支援し、公式自動オファー機能を優先します。")
-                        .foregroundStyle(.secondary)
+                Section("ログイン") {
+                    Text("各サイトのログイン情報はAIに渡しません。ログイン画面ではiPhoneのパスワード自動入力などを使って手動でログインしてください。ログイン後のCookieはアプリ内ブラウザで継続利用します。")
                 }
 
                 Section("動作範囲") {
-                    Text("このアプリ内のWebページだけを操作します。iPhone上の他アプリを自動操作することはできません。")
+                    Text("このアプリ内のWebページを操作します。iPhone上の他アプリを直接操作することはできません。")
                 }
             }
             .navigationTitle("設定")
