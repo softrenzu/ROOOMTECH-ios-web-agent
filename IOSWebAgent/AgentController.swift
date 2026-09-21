@@ -116,6 +116,15 @@ final class AgentController: ObservableObject {
                     continue
                 }
 
+                if action.type == "input",
+                   let target = action.target,
+                   let element = snapshot.elements.first(where: { $0.id == target }),
+                   element.sensitive {
+                    errorMessage = "パスワード、暗証番号、ワンタイムコード、カード情報などの機密項目はAIに入力させません。画面で手動入力してから、もう一度実行してください。"
+                    status = "機密情報の手動入力が必要"
+                    return
+                }
+
                 if let localMessage = localSafetyMessage(for: action, snapshot: snapshot) {
                     if confirmationCredit > 0 {
                         confirmationCredit = 0
@@ -132,13 +141,19 @@ final class AgentController: ObservableObject {
 
                 approvedConfirmation = nil
                 status = "操作中: \(describe(action))"
-                try await browser.execute(action)
+                do {
+                    try await browser.execute(action)
+                } catch AgentError.actionFailed(let message) {
+                    history.append("ACTION FAILED: \(message). Re-read the page and choose another target.")
+                    status = "画面が変化したため再判定中"
+                    continue
+                }
                 history.append(describe(action))
 
                 if action.type == "navigate" || action.type == "tap" {
-                    try await Task.sleep(for: .seconds(1.3))
+                    try await browser.waitForPageSettled()
                 } else {
-                    try await Task.sleep(for: .milliseconds(450))
+                    try await Task.sleep(for: .milliseconds(350))
                 }
             }
             status = "最大操作回数に到達"
