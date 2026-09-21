@@ -37,3 +37,17 @@ jobs:
           name: IOSWebAgent-Simulator
           path: IOSWebAgent-Simulator.zip
           if-no-files-found: error
+
+      - name: Build for physical iPhone SDK
+        run: |
+          set -o pipefail
+          rm -rf build-device
+          xcodebuild \
+            -project IOSWebAgent.xcodeproj \
+            -target IOSWebAgent \
+            -configuration Debug \
+            -sdk iphoneos \
+            -derivedDataPath build-device \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
