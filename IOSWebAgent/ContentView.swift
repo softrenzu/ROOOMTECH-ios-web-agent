@@ -7,6 +7,8 @@ struct ContentView: View {
     @State private var address = "https://www.google.com"
     @State private var goal = ""
     @State private var showSettings = false
+    @State private var tranbiStatus = "未確認"
+    @State private var checkingTranbiStatus = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,6 +74,45 @@ struct ContentView: View {
             .padding(.horizontal, 10)
             .padding(.top, 8)
 
+            HStack(spacing: 8) {
+                Button("TRANBIログイン") {
+                    browser.load("https://www.tranbi.com/login/")
+                    tranbiStatus = "ログインしてください"
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button("オファー一覧") {
+                    browser.load("https://www.tranbi.com/sell/list/")
+                    tranbiStatus = "確認中"
+                    Task { await refreshTranbiStatus() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button {
+                    Task { await refreshTranbiStatus() }
+                } label: {
+                    if checkingTranbiStatus {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "checkmark.shield")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("TRANBIログイン状態を確認")
+
+                Spacer()
+
+                Text(tranbiStatus)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+
             if browser.isLoading {
                 ProgressView()
                     .progressViewStyle(.linear)
@@ -79,13 +120,16 @@ struct ContentView: View {
         }
         .onChange(of: browser.currentURL) { _, newValue in
             address = newValue
+            if newValue.contains("tranbi.com") {
+                Task { await refreshTranbiStatus() }
+            }
         }
     }
 
     private var agentPanel: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                TextField("例: このサイトで料金ページを開いて", text: $goal, axis: .vertical)
+                TextField("例: 条件に合う候補を確認して。送信はしないで", text: $goal, axis: .vertical)
                     .lineLimit(1...3)
                     .textFieldStyle(.roundedBorder)
 
@@ -118,6 +162,14 @@ struct ContentView: View {
         }
         .padding(10)
         .background(.ultraThinMaterial)
+    }
+
+    @MainActor
+    private func refreshTranbiStatus() async {
+        guard !checkingTranbiStatus else { return }
+        checkingTranbiStatus = true
+        defer { checkingTranbiStatus = false }
+        tranbiStatus = await browser.tranbiSessionStatus()
     }
 }
 
@@ -161,6 +213,12 @@ private struct SettingsView: View {
                             }
                         }
                     }
+                }
+
+                Section("TRANBIログイン") {
+                    Text("TRANBIログイン画面のメールアドレスまたはパスワード欄をタップし、iPhoneのパスワード自動入力からChromeに保存したTRANBIの認証情報を選択してください。")
+                    Text("ログイン時は「ログイン状態を30日間保持する」を有効にすると、アプリ内ブラウザのセッションを維持しやすくなります。")
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("動作範囲") {
