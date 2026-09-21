@@ -7,6 +7,7 @@ struct ClaudeClient {
         apiKey: String,
         goal: String,
         snapshot: PageSnapshot,
+        screenshot: BrowserScreenshot?,
         history: [String]
     ) async throws -> AgentAction {
         let pageData = try JSONEncoder().encode(snapshot)
@@ -15,6 +16,13 @@ struct ClaudeClient {
         }
 
         let historyText = history.suffix(10).joined(separator: "\n")
+        let screenshotNote: String
+        if let screenshot {
+            screenshotNote = "provided, size=\(Int(screenshot.width))x\(Int(screenshot.height)) points"
+        } else {
+            screenshotNote = "not provided"
+        }
+
         let prompt = """
         USER GOAL:
         \(goal)
@@ -25,24 +33,43 @@ struct ClaudeClient {
         CURRENT PAGE SNAPSHOT:
         \(pageJSON)
 
+        SCREENSHOT:
+        \(screenshotNote)
+
         Decide exactly one next browser action. Return only a JSON object matching this schema:
-        {"type":"tap|input|scroll|navigate|back|wait|confirm|done","target":"element id or null","text":"text or null","url":"url or null","delta":650,"message":"short reason or null"}
+        {"type":"tap|tap_point|input|scroll|navigate|back|wait|confirm|done","target":"element id or null","text":"text or null","url":"url or null","delta":650,"x":120,"y":300,"message":"short reason or null"}
         """
 
         let system = """
         You are a cautious iPhone web-navigation agent operating only inside a WKWebView.
         Use element IDs from the snapshot whenever possible. Never invent an element ID.
-        Do not read or expose password values. Do not attempt to bypass authentication, CAPTCHAs, paywalls, or site security.
+        tap_point is a fallback only when a screenshot is provided and there is no usable DOM element ID. Its x/y coordinates must use the screenshot point dimensions stated in the prompt.
+        Never place passwords, PINs, one-time codes, card numbers, CVV/CVC, security codes, or other secret values in an input action.
+        Do not attempt to bypass authentication, CAPTCHAs, paywalls, or site security.
         Before any consequential action that could send a message, submit a form with external effect, make a purchase/payment, publish/post, delete data, change account/security settings, or finalize a booking/order, return type=confirm with a clear Japanese message describing the exact action. After the user approves, choose the actual tap/input action.
         If the goal is satisfied, return type=done. If the page is still loading or navigation just happened, use wait.
         Output JSON only, without Markdown fences.
         """
 
+        var messageContent: [[String: Any]] = [
+            ["type": "text", "text": prompt]
+        ]
+        if let screenshot {
+            messageContent.append([
+                "type": "image",
+                "source": [
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": screenshot.base64JPEG
+                ]
+            ])
+        }
+
         let payload: [String: Any] = [
             "model": model,
             "max_tokens": 700,
             "system": system,
-            "messages": [["role": "user", "content": prompt]]
+            "messages": [["role": "user", "content": messageContent]]
         ]
         let body = try JSONSerialization.data(withJSONObject: payload)
 
