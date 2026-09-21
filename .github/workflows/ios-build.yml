@@ -47,7 +47,7 @@ jobs:
             -target IOSWebAgent \
             -configuration Debug \
             -sdk iphoneos \
-            -derivedDataPath build-device \
+            SYMROOT="$PWD/build-device" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             build
