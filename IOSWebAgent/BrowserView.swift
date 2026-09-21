@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import UIKit
 
 struct BrowserView: UIViewRepresentable {
     @ObservedObject var browser: BrowserController
@@ -71,6 +72,65 @@ struct BrowserView: UIViewRepresentable {
                 webView.load(URLRequest(url: url))
             }
             return nil
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptAlertPanelWithMessage message: String,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping () -> Void
+        ) {
+            guard let presenter = presenter(for: webView) else {
+                completionHandler()
+                return
+            }
+            let alert = UIAlertController(title: webView.title, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+            presenter.present(alert, animated: true)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptConfirmPanelWithMessage message: String,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping (Bool) -> Void
+        ) {
+            guard let presenter = presenter(for: webView) else {
+                completionHandler(false)
+                return
+            }
+            let alert = UIAlertController(title: webView.title, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "キャンセル", style: .cancel) { _ in completionHandler(false) })
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+            presenter.present(alert, animated: true)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptTextInputPanelWithPrompt prompt: String,
+            defaultText: String?,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping (String?) -> Void
+        ) {
+            guard let presenter = presenter(for: webView) else {
+                completionHandler(nil)
+                return
+            }
+            let alert = UIAlertController(title: webView.title, message: prompt, preferredStyle: .alert)
+            alert.addTextField { field in field.text = defaultText }
+            alert.addAction(UIAlertAction(title: "キャンセル", style: .cancel) { _ in completionHandler(nil) })
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                completionHandler(alert.textFields?.first?.text)
+            })
+            presenter.present(alert, animated: true)
+        }
+
+        private func presenter(for webView: WKWebView) -> UIViewController? {
+            var controller = webView.window?.rootViewController
+            while let presented = controller?.presentedViewController {
+                controller = presented
+            }
+            return controller
         }
     }
 }
