@@ -33,6 +33,26 @@ final class BrowserController: ObservableObject {
         webView?.reload()
     }
 
+    func waitForPageSettled() async throws {
+        guard webView != nil else { throw AgentError.noWebView }
+        try await Task.sleep(for: .milliseconds(180))
+
+        var stableChecks = 0
+        for _ in 0..<24 {
+            try Task.checkCancellation()
+            let loading = webView?.isLoading ?? false
+            let readyState = (try? await evaluate("document.readyState")) as? String ?? ""
+
+            if !loading && readyState != "loading" {
+                stableChecks += 1
+                if stableChecks >= 2 { return }
+            } else {
+                stableChecks = 0
+            }
+            try await Task.sleep(for: .milliseconds(250))
+        }
+    }
+
     func snapshot() async throws -> PageSnapshot {
         guard webView != nil else { throw AgentError.noWebView }
         let script = #"""
