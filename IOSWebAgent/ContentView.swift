@@ -150,6 +150,16 @@ private struct SettingsView: View {
                     if agent.hasAPIKey() || saved {
                         Label("APIキー保存済み", systemImage: "checkmark.circle")
                             .foregroundStyle(.secondary)
+
+                        Button("保存したAPIキーを削除", role: .destructive) {
+                            do {
+                                try agent.deleteAPIKey()
+                                saved = false
+                                apiKey = ""
+                            } catch {
+                                self.error = error.localizedDescription
+                            }
+                        }
                     }
                 }
 
