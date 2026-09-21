@@ -26,6 +26,10 @@ final class AgentController: ObservableObject {
         !(keychain.read() ?? "").isEmpty
     }
 
+    func deleteAPIKey() throws {
+        try keychain.delete()
+    }
+
     func run(goal: String) {
         guard !isRunning else { return }
         shouldStop = false
