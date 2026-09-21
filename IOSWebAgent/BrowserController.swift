@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import UIKit
 
 @MainActor
 final class BrowserController: ObservableObject {
@@ -50,6 +51,25 @@ final class BrowserController: ObservableObject {
                 stableChecks = 0
             }
             try await Task.sleep(for: .milliseconds(250))
+        }
+    }
+
+    func captureScreenshot() async -> BrowserScreenshot? {
+        guard let webView else { return nil }
+
+        return await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: nil) { image, _ in
+                guard let image,
+                      let data = image.jpegData(compressionQuality: 0.55) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: BrowserScreenshot(
+                    base64JPEG: data.base64EncodedString(),
+                    width: image.size.width,
+                    height: image.size.height
+                ))
+            }
         }
     }
 
@@ -172,6 +192,27 @@ final class BrowserController: ObservableObject {
             })();
             """
             try await requireOK(js, actionName: "入力")
+
+        case "tap_point":
+            guard let x = action.x, let y = action.y else {
+                throw AgentError.actionFailed("座標がありません")
+            }
+            let js = """
+            (() => {
+              const x = \(x);
+              const y = \(y);
+              const el = document.elementFromPoint(x, y);
+              if (!el) return 'not_found';
+              const init = {bubbles:true, cancelable:true, view:window, clientX:x, clientY:y};
+              try { el.dispatchEvent(new PointerEvent('pointerdown', init)); } catch (_) {}
+              el.dispatchEvent(new MouseEvent('mousedown', init));
+              try { el.dispatchEvent(new PointerEvent('pointerup', init)); } catch (_) {}
+              el.dispatchEvent(new MouseEvent('mouseup', init));
+              el.dispatchEvent(new MouseEvent('click', init));
+              return 'ok';
+            })();
+            """
+            try await requireOK(js, actionName: "座標タップ")
 
         case "scroll":
             let delta = action.delta ?? 650
