@@ -12,6 +12,7 @@ final class AgentController: ObservableObject {
     private let keychain = KeychainStore()
     private var shouldStop = false
     private var confirmationContinuation: CheckedContinuation<Bool, Never>?
+    private var runTask: Task<Void, Never>?
 
     func attach(browser: BrowserController) {
         self.browser = browser
@@ -29,11 +30,16 @@ final class AgentController: ObservableObject {
         guard !isRunning else { return }
         shouldStop = false
         errorMessage = nil
-        Task { await runLoop(goal: goal) }
+        runTask = Task { await runLoop(goal: goal) }
     }
 
     func stop() {
         shouldStop = true
+        runTask?.cancel()
+        runTask = nil
+        if confirmationContinuation != nil {
+            resolveConfirmation(approved: false)
+        }
         isRunning = false
         status = "停止しました"
     }
@@ -59,9 +65,11 @@ final class AgentController: ObservableObject {
         status = "AIが画面を確認中"
         var history: [String] = []
         var approvedConfirmation: String?
+        var confirmationCredit = 0
 
         defer {
             isRunning = false
+            runTask = nil
             if status != "完了" && !shouldStop && errorMessage == nil {
                 status = "停止"
             }
@@ -69,7 +77,9 @@ final class AgentController: ObservableObject {
 
         do {
             for step in 1...30 {
+                try Task.checkCancellation()
                 if shouldStop { return }
+
                 status = "画面確認 \(step)/30"
                 let snapshot = try await browser.snapshot()
 
@@ -101,17 +111,39 @@ final class AgentController: ObservableObject {
                         return
                     }
                     approvedConfirmation = message
+                    confirmationCredit = 2
                     history.append("confirm approved: \(message)")
                     continue
+                }
+
+                if let localMessage = localSafetyMessage(for: action, snapshot: snapshot) {
+                    if confirmationCredit > 0 {
+                        confirmationCredit = 0
+                    } else {
+                        let approved = await requestConfirmation(localMessage)
+                        if !approved {
+                            status = "ユーザーがキャンセルしました"
+                            return
+                        }
+                    }
+                } else if confirmationCredit > 0 {
+                    confirmationCredit -= 1
                 }
 
                 approvedConfirmation = nil
                 status = "操作中: \(describe(action))"
                 try await browser.execute(action)
                 history.append(describe(action))
-                try await Task.sleep(nanoseconds: action.type == "navigate" || action.type == "tap" ? 1_300_000_000 : 450_000_000)
+
+                if action.type == "navigate" || action.type == "tap" {
+                    try await Task.sleep(for: .seconds(1.3))
+                } else {
+                    try await Task.sleep(for: .milliseconds(450))
+                }
             }
             status = "最大操作回数に到達"
+        } catch is CancellationError {
+            status = "停止しました"
         } catch {
             errorMessage = error.localizedDescription
             status = "エラー"
@@ -123,6 +155,33 @@ final class AgentController: ObservableObject {
         return await withCheckedContinuation { continuation in
             confirmationContinuation = continuation
         }
+    }
+
+    private func localSafetyMessage(for action: AgentAction, snapshot: PageSnapshot) -> String? {
+        guard action.type == "tap", let target = action.target,
+              let element = snapshot.elements.first(where: { $0.id == target }) else {
+            return nil
+        }
+
+        let context = [
+            element.text,
+            element.ariaLabel ?? "",
+            element.placeholder ?? "",
+            element.href ?? "",
+            element.formAction ?? ""
+        ].joined(separator: " ").lowercased()
+
+        let consequentialTerms = [
+            "購入", "注文", "予約", "送信", "削除", "公開", "投稿", "支払", "決済", "振込", "確定", "申込", "申し込", "応募", "解約", "退会", "登録",
+            "buy", "purchase", "order", "book", "reserve", "send", "submit", "delete", "remove", "publish", "post", "pay", "payment", "transfer", "confirm", "apply", "unsubscribe", "cancel subscription"
+        ]
+
+        guard consequentialTerms.contains(where: { context.contains($0) }) else {
+            return nil
+        }
+
+        let label = element.text.isEmpty ? (element.ariaLabel ?? "このボタン") : element.text
+        return "「\(label)」を実行しようとしています。外部への送信・購入・予約・削除などの結果が発生する可能性があります。実行しますか？"
     }
 
     private func describe(_ action: AgentAction) -> String {
